@@ -1,0 +1,11 @@
+{
+  "name": "pi-jev-guard",
+  "version": "0.1.0",
+  "description": "Pi extension: classify every tool call with TypeSafe's Jev model (allow / ask / deny) in ~300 ms, so the main model never spends tokens judging its own tool calls.",
+  "keywords": ["pi-package", "typesafe", "jev", "guard", "permissions"],
+  "license": "MIT",
+  "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

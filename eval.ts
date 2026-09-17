@@ -72,3 +72,5 @@ const cost = ((tokens / 1e6) * 0.042).toFixed(4)
 console.log(
 	`\n${passed}/${CASES.length} as expected, avg ${Math.round(ms / CASES.length)}ms, ${Math.round(tokens / CASES.length)} tokens per call ($${cost} total)`
 )
+
+if (passed !== CASES.length) process.exitCode = 1

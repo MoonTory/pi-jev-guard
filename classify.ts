@@ -34,8 +34,6 @@ type Policy = {
 	inScope: number
 }
 
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
-
 type NoulAnswer = { noul: number }
 
 type ChoiceAnswer = { choice: string; confidence: number }
@@ -227,12 +225,14 @@ export const describe = (c: Classification, v: Verdict): string =>
 const LOG_DIR = join(homedir(), '.jev-guard')
 
 /** Append one JSON line per decision to ~/.jev-guard/log.jsonl. Never throws. */
-export function logDecision(entry: Record<string, JsonValue | unknown>): void {
+export function logDecision(entry: Record<string, unknown>): void {
 	try {
+		const { input, ...details } = entry
+		const safeEntry = input === undefined ? details : { ...details, input: summarizeInput(input) }
 		mkdirSync(LOG_DIR, { recursive: true })
 		appendFileSync(
 			join(LOG_DIR, 'log.jsonl'),
-			`${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`
+			`${JSON.stringify({ at: new Date().toISOString(), ...safeEntry })}\n`
 		)
 	} catch {
 		// Logging must never break the tool call.

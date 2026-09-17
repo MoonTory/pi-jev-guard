@@ -17,6 +17,7 @@ import {
 	decide,
 	describe,
 	logDecision,
+	summarizeInput,
 	type Classification,
 	type Verdict
 } from './classify.ts'
@@ -57,11 +58,32 @@ const CONFIG_FILE = join(homedir(), '.pi', 'agent', 'jev-guard.json')
 
 const PRICE_PER_MTOK = 0.042
 
+function isConfigObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isMode(value: unknown): value is Mode {
+	return value === 'enforce' || value === 'log' || value === 'off'
+}
+
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
 function loadConfig(): Config {
 	try {
-		// SAFETY: the file is the user's own settings; unknown keys are harmless and missing ones fall back to DEFAULTS.
-		const fromFile = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as Partial<Config>
-		return { ...DEFAULTS, ...fromFile }
+		const fromFile: unknown = JSON.parse(readFileSync(CONFIG_FILE, 'utf8'))
+		if (!isConfigObject(fromFile)) return { ...DEFAULTS }
+		const config = { ...DEFAULTS }
+		if (isMode(fromFile.mode)) config.mode = fromFile.mode
+		if (isStringArray(fromFile.skipTools)) config.skipTools = fromFile.skipTools
+		if (typeof fromFile.timeoutMs === 'number') config.timeoutMs = fromFile.timeoutMs
+		if (typeof fromFile.failOpen === 'boolean') config.failOpen = fromFile.failOpen
+		if (fromFile.askWithoutUi === 'block' || fromFile.askWithoutUi === 'allow') {
+			config.askWithoutUi = fromFile.askWithoutUi
+		}
+		if (typeof fromFile.showStatus === 'boolean') config.showStatus = fromFile.showStatus
+		return config
 	} catch {
 		// No config file, or an unreadable one: run with defaults.
 		return { ...DEFAULTS }
@@ -96,6 +118,21 @@ function errorVerdict(config: Config, message: string): Block | undefined {
 		block: true,
 		reason: `jev-guard could not classify this call (${message}) and failOpen is false`
 	}
+}
+
+function logClassification(
+	config: Config,
+	event: ToolCallEvent,
+	classification: Classification,
+	verdict: Verdict
+): void {
+	logDecision({
+		harness: 'pi',
+		mode: config.mode,
+		input: summarizeInput(event.input),
+		...classification,
+		...verdict
+	})
 }
 
 async function askHuman(
@@ -155,11 +192,10 @@ function createGuard(): Guard {
 	const guard = async (event: ToolCallEvent, ctx: ExtensionContext): Promise<Block | undefined> => {
 		if (config.mode === 'off' || config.skipTools.includes(event.toolName)) return undefined
 		if (!process.env.TYPESAFE_API_KEY) {
-			if (!warnedNoKey && ctx.hasUI) {
-				ctx.ui.notify('jev-guard: TYPESAFE_API_KEY is not set, guard is inactive', 'warning')
-				warnedNoKey = true
-			}
-			return undefined
+			if (!warnedNoKey && ctx.hasUI)
+				ctx.ui.notify('jev-guard: TYPESAFE_API_KEY is not set', 'warning')
+			warnedNoKey = true
+			return config.mode === 'log' ? undefined : errorVerdict(config, 'TYPESAFE_API_KEY is not set')
 		}
 
 		let c: Classification
@@ -177,12 +213,13 @@ function createGuard(): Guard {
 			const message = err instanceof Error ? err.message : String(err)
 			logDecision({ harness: 'pi', tool: event.toolName, error: message })
 			setStatus(ctx, `jev-guard error: ${message.slice(0, 60)}`)
+			if (config.mode === 'log') return undefined
 			return errorVerdict(config, message)
 		}
 
 		const verdict = decide(c)
 		record(c, verdict)
-		logDecision({ harness: 'pi', mode: config.mode, input: event.input, ...c, ...verdict })
+		logClassification(config, event, c, verdict)
 		setStatus(ctx, describe(c, verdict))
 		if (config.mode === 'log' || verdict.decision === 'allow') return undefined
 		if (verdict.decision === 'deny') {

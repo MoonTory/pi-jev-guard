@@ -15,7 +15,7 @@ No runtime dependencies. Node 22.18 or newer (the extension is TypeScript and pi
 
 ## What it does
 
-On every `tool_call` (except the read-only built-ins `read`, `grep`, `find`, `ls` by default) it sends Jev one request with five questions about the call and the user's latest message:
+On every `tool_call` it sends Jev one request with five questions about the call and the user's latest message. By default, it skips `read`, `grep`, `find`, and `ls` for latency; set `skipTools: []` to guard reads too:
 
 | question          | type                                                                                                    | used for                                 |
 | ----------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
@@ -27,11 +27,11 @@ On every `tool_call` (except the read-only built-ins `read`, `grep`, `find`, `ls
 
 Code then decides, with thresholds in `classify.ts`:
 
-- **allow**: read_only or reversible with confidence ≥ 0.6, no secrets, not writing outside the project. The call runs with no prompt.
-- **ask**: hard_to_reverse, possible secrets, writes outside the project, or the model is unsure. A confirm dialog shows Jev's reason and the command. In print or RPC mode with no one to ask, the call is blocked with the reason so the model can ask the user.
+- **allow**: read_only or reversible with confidence ≥ 0.6 and not writing outside the project. The call runs with no prompt.
+- **ask**: hard_to_reverse, a secrets score of 0.7 or more, writes outside the project, or the model is unsure. A confirm dialog shows Jev's reason and the command. In print or RPC mode with no one to ask, the call is blocked with the reason so the model can ask the user.
 - **deny**: destructive and unrelated to the current task. Blocked with the reason.
 
-The footer shows the last verdict, for example `jev allow · reversible edit (0.98) · 290ms · 940 tok`. Every decision is appended to `~/.jev-guard/log.jsonl`.
+The footer shows the last verdict, for example `jev allow · reversible edit (0.98) · 290ms · 940 tok`. Every decision is appended to `~/.jev-guard/log.jsonl` with a truncated summary of each call, not raw tool input.
 
 ## Commands
 
